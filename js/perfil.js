@@ -13,7 +13,7 @@
 window.CC = window.CC || {};
 CC.Perfil = {
   id: 'demo',
-  semilla: 'demo-1',
+  semilla: 'demo-2',
   demoPublico: true,
   dominioCorreo: 'example.com',
 
