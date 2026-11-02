@@ -7,21 +7,25 @@
  * Toda la interfaz es asincrona y nunca revienta: si el navegador bloquea
  * IndexedDB (ventana privada, permisos), `disponible()` devuelve false y la
  * aplicacion esconde las funciones de foto en lugar de fallar.
+ *
+ * En el programa de escritorio las imagenes van en archivos, en
+ * Documentos\Cuota Clara\Imagenes, junto a la base de datos: asi entran en
+ * cualquier copia que hagan de esa carpeta. Las que se hubieran guardado
+ * antes en IndexedDB se pasan ahi solas la primera vez.
  */
 window.CC = window.CC || {};
 
 CC.Archivos = (function () {
   var BASE = 'cuotaclara-archivos';
   var ALMACEN = 'imagenes';
-  var bd = null;
-  var intentado = false;
+  var DISCO = window.escritorio && window.escritorio.imagenes;
+  var abriendo = null;
 
+  /* Una sola apertura para todos: si dos imagenes se guardan al mismo tiempo
+     (la foto y la firma de un egreso), las dos esperan a la misma. */
   function abrir() {
-    if (bd) return Promise.resolve(bd);
-    if (intentado && !bd) return Promise.resolve(null);
-    intentado = true;
-
-    return new Promise(function (resolver) {
+    if (abriendo) return abriendo;
+    abriendo = new Promise(function (resolver) {
       var pet;
       try {
         if (!window.indexedDB) return resolver(null);
@@ -32,10 +36,11 @@ CC.Archivos = (function () {
         var db = pet.result;
         if (!db.objectStoreNames.contains(ALMACEN)) db.createObjectStore(ALMACEN);
       };
-      pet.onsuccess = function () { bd = pet.result; resolver(bd); };
+      pet.onsuccess = function () { resolver(pet.result); };
       pet.onerror = function () { resolver(null); };
       pet.onblocked = function () { resolver(null); };
     });
+    return abriendo;
   }
 
   function transaccion(modo) {
@@ -76,12 +81,57 @@ CC.Archivos = (function () {
     });
   }
 
+  /* En el programa de escritorio: las imagenes que hubieran quedado en IndexedDB
+     (versiones anteriores) se pasan a la carpeta, una sola vez. */
+  var migrando = null;
+  function migrar() {
+    if (!DISCO) return Promise.resolve();
+    if (migrando) return migrando;
+    migrando = transaccion('readonly').then(function (almacen) {
+      if (!almacen) return;
+      return new Promise(function (resolver) {
+        var pares = [];
+        var cur = almacen.openCursor();
+        cur.onsuccess = function () {
+          var c = cur.result;
+          if (!c) return resolver(pares);
+          pares.push([String(c.key), c.value]);
+          c.continue();
+        };
+        cur.onerror = function () { resolver(pares); };
+      }).then(function (pares) {
+        return pares.reduce(function (cadena, par) {
+          return cadena.then(function () { return DISCO.guardar(par[0], par[1], false); });
+        }, Promise.resolve());
+      });
+    }).catch(function () { /* lo que no se pudo pasar sigue en IndexedDB y se lee de ahi */ });
+    return migrando;
+  }
+
+  function nuevoId(prefijo) {
+    return (prefijo || 'img') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function leerIndexedDB(id) {
+    return transaccion('readonly').then(function (almacen) {
+      if (!almacen) return null;
+      return new Promise(function (resolver) {
+        var p = almacen.get(id);
+        p.onsuccess = function () { resolver(p.result || null); };
+        p.onerror = function () { resolver(null); };
+      });
+    });
+  }
+
+  if (DISCO) setTimeout(migrar, 1500);
+
   return {
-    disponible: function () { return abrir().then(function (db) { return !!db; }); },
+    disponible: function () { return DISCO ? Promise.resolve(true) : abrir().then(function (db) { return !!db; }); },
 
     /** Guarda un dataURL y devuelve su id. */
     guardar: function (dataURL, prefijo) {
-      var id = (prefijo || 'img') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      var id = nuevoId(prefijo);
+      if (DISCO) return DISCO.guardar(id, dataURL, true).then(function (ok) { return ok ? id : null; }, function () { return null; });
       return transaccion('readwrite').then(function (almacen) {
         if (!almacen) return null;
         return new Promise(function (resolver) {
@@ -95,26 +145,24 @@ CC.Archivos = (function () {
     /** Devuelve el dataURL de un id, o null si ya no esta. */
     leer: function (id) {
       if (!id) return Promise.resolve(null);
-      return transaccion('readonly').then(function (almacen) {
-        if (!almacen) return null;
-        return new Promise(function (resolver) {
-          var p = almacen.get(id);
-          p.onsuccess = function () { resolver(p.result || null); };
-          p.onerror = function () { resolver(null); };
-        });
-      });
+      if (DISCO) {
+        return DISCO.leer(id).then(function (d) { return d || leerIndexedDB(id); }, function () { return leerIndexedDB(id); });
+      }
+      return leerIndexedDB(id);
     },
 
     borrar: function (id) {
       if (!id) return Promise.resolve();
-      return transaccion('readwrite').then(function (almacen) {
+      var enBase = transaccion('readwrite').then(function (almacen) {
         if (!almacen) return;
         try { almacen.delete(id); } catch (e) { /* ya no estaba */ }
       });
+      return DISCO ? Promise.all([DISCO.borrar(id), enBase]).then(function () {}) : enBase;
     },
 
     /** Cuanto ocupan las imagenes guardadas, para avisarlo en Ajustes. */
     uso: function () {
+      if (DISCO) return migrar().then(function () { return DISCO.uso(); });
       return transaccion('readonly').then(function (almacen) {
         if (!almacen) return { n: 0, bytes: 0 };
         return new Promise(function (resolver) {
@@ -158,6 +206,16 @@ CC.Firma = function (lienzo) {
     ctx.strokeStyle = '#111A22';
   }
   ajustarTamano();
+  // Si se preparo oculto (la casilla de firma se palomea despues) mide 0x0: al aparecer,
+  // o a mas tardar con el primer trazo, se mide de nuevo
+  function remedir() {
+    var caja = lienzo.getBoundingClientRect();
+    if (vacia && caja.width && Math.round(caja.width * (window.devicePixelRatio || 1)) !== lienzo.width) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ajustarTamano();
+    }
+  }
+  if (window.ResizeObserver) new ResizeObserver(remedir).observe(lienzo);
 
   function punto(e) {
     var caja = lienzo.getBoundingClientRect();
@@ -172,6 +230,7 @@ CC.Firma = function (lienzo) {
 
   function iniciar(e) {
     e.preventDefault();
+    remedir();
     dibujando = true; vacia = false;
     var p = punto(e); anotar(p);
     ctx.beginPath(); ctx.moveTo(p.x, p.y);

@@ -66,6 +66,8 @@ CC.Sesion = (function () {
     actual = null;
     try { window.sessionStorage.removeItem(LLAVE); } catch (e) { /* nada */ }
     clearTimeout(temporizador);
+    // lo que se quedó a medio llenar no lo hereda el siguiente que entre
+    if (CC.ui && CC.ui.cerrarModal) CC.ui.cerrarModal();
     pintarPuerta();
   }
 
@@ -85,8 +87,14 @@ CC.Sesion = (function () {
     if (!actual) return;
     temporizador = setTimeout(function () { salir('inactivo'); }, MINUTOS_INACTIVO * 60000);
   }
-  ['click', 'keydown', 'touchstart'].forEach(function (ev) {
-    document.addEventListener(ev, function () { if (actual) vigilar(); }, true);
+  // Mover el mouse o bajar en la pantalla también cuenta (leer un reporte no es estar fuera)
+  var ultimo = 0;
+  ['click', 'keydown', 'touchstart', 'mousemove', 'wheel', 'scroll'].forEach(function (ev) {
+    document.addEventListener(ev, function () {
+      if (!actual || Date.now() - ultimo < 5000) return;
+      ultimo = Date.now();
+      vigilar();
+    }, { capture: true, passive: true });
   });
 
   /* ---------- La puerta de entrada ---------- */

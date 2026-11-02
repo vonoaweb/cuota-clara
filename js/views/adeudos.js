@@ -244,12 +244,12 @@ function verConvenio(convenioId) {
       cuerpo.querySelector('#vPdf').onclick = function () { CC.Comprobantes.descargar(CC.Comprobantes.convenio(cv.id)); };
       var baja = cuerpo.querySelector('#vBaja');
       if (baja) baja.onclick = function () {
-        CC.ui.confirmar('Cancelar convenio',
-          'El convenio queda como cancelado y el adeudo se vuelve a cobrar completo. Los pagos ya hechos se conservan.',
-          'Cancelar convenio', function () {
-            CC.Store.actualizarConvenio(cv.id, { estado: 'cancelado' });
+        CC.ui.pedirTexto('Cancelar convenio',
+          'El convenio queda como cancelado y el adeudo se vuelve a cobrar completo. Los pagos ya hechos se conservan. ¿Por qué se cancela?',
+          'Cancelar convenio', function (motivo) {
+            CC.Store.actualizarConvenio(cv.id, { estado: 'cancelado', motivoCancelacion: motivo });
             CC.ui.toast('Convenio cancelado');
-          }, true);
+          });
       };
     });
 }

@@ -56,7 +56,7 @@ var PASOS = [
   },
   {
     id: 'adeudos', titulo: 'Lo que debía cada casa al empezar',
-    texto: 'El adeudo que traen de CondoVive, casa por casa. Si nadie debía, también se marca.',
+    texto: 'El adeudo que traen del sistema anterior, casa por casa. Si nadie debía, también se marca.',
     hecho: function () { return !!arranque().adeudos; },
     estado: function () {
       var cs = CC.Store.cargos().filter(function (c) { return c.tipo === 'inicial'; });
@@ -94,7 +94,7 @@ var PASOS = [
     id: 'hoja', titulo: 'Hoja de arranque para el comité',
     texto: 'Un PDF con todo lo que se capturó para arrancar: las reglas, los saldos y lo que debe cada casa. Se imprime y lo firman la administración y el comité.',
     hecho: function () { return !!arranque().hoja; },
-    estado: function () { var h = arranque().hoja; return h ? 'Bajada el ' + CC.fmt.fechaCorta(String(h).slice(0, 10)) : ''; },
+    estado: function () { var h = arranque().hoja; return h ? 'Bajada el ' + CC.fmt.fechaCorta(h) : ''; },
     boton: 'Bajar la hoja de arranque', accion: function () {
       CC.Comprobantes.descargar(CC.Comprobantes.hojaArranque()).then(function (r) { if (r) CC.Store.marcarArranque('hoja'); });
     }
@@ -248,24 +248,34 @@ function pasoCasas() {
     });
 }
 
-/** Busca en la primera fila los encabezados que se reconocen; si no hay, usa el orden casa, dueño, teléfono, correo. */
+/**
+ * Busca los encabezados que se reconocen en los primeros renglones (a veces
+ * arriba va un título); si no hay, usa el orden casa, dueño, teléfono, correo.
+ */
 function columnasPadron(filas) {
+  // El orden importa: «Meses que debe» es la columna de meses, no la del monto
   var pistas = {
     // "No.", "Núm", "Número de casa"… pero no "Nombre"
     casa: /^(casa\b|no\.|no$|n[uú]m(\.|ero)?(\s|$)|n[uú]mero|unidad|lote|depto|#)/, propietario: /propietari|due[ñn]o|nombre|cond[oó]mino/,
     telefono: /tel|cel|whats|m[oó]vil/, email: /correo|mail/, inquilino: /inquilin|arrendatari|habita|renta/,
-    debe: /debe|adeudo|saldo/, meses: /mes/
+    meses: /mes/, debe: /debe|adeudo|saldo|importe|monto|total/
   };
-  var f0 = (filas[0] || []).map(function (x) { return String(x).toLowerCase().trim(); });
-  var cols = {};
-  Object.keys(pistas).forEach(function (k) {
-    for (var j = 0; j < f0.length; j++) {
-      var usada = Object.keys(cols).some(function (q) { return cols[q] === j; });
-      if (!usada && pistas[k].test(f0[j])) { cols[k] = j; break; }
-    }
-  });
-  if (cols.casa === undefined) return { inicio: 0, cols: { casa: 0, propietario: 1, telefono: 2, email: 3, debe: 1, meses: 2 } };
-  return { inicio: 1, cols: cols };
+  function leer(fila) {
+    var f0 = (fila || []).map(function (x) { return String(x).toLowerCase().trim(); });
+    var cols = {};
+    Object.keys(pistas).forEach(function (k) {
+      for (var j = 0; j < f0.length; j++) {
+        var usada = Object.keys(cols).some(function (q) { return cols[q] === j; });
+        if (!usada && pistas[k].test(f0[j])) { cols[k] = j; break; }
+      }
+    });
+    return cols;
+  }
+  for (var i = 0; i < Math.min(5, filas.length); i++) {
+    var cols = leer(filas[i]);
+    if (cols.casa !== undefined && Object.keys(cols).length > 1) return { inicio: i + 1, cols: cols };
+  }
+  return { inicio: 0, cols: { casa: 0, propietario: 1, telefono: 2, email: 3, debe: 1, meses: 2 } };
 }
 
 /** Lee un Excel o CSV y regresa sus renglones con la clave de la casa ya limpia. */
@@ -311,7 +321,7 @@ function padron() {
         q('pCuenta').textContent = casas.length + ' casas · ' + (vacios ? 'faltan ' + vacios + (vacios === 1 ? ' dueño' : ' dueños') : 'todas con dueño');
       }
       contar();
-      cuerpo.addEventListener('input', contar);
+      cuerpo.querySelector('.padron').addEventListener('input', contar);
       q('pCerrar').onclick = CC.ui.cerrarModal;
       q('pMas').onclick = function () { CC.ui.cerrarModal(); masCasas(); };
       q('pArchivo').onchange = function () {
@@ -395,7 +405,7 @@ function pasoAdeudos() {
   });
   CC.ui.modal('Lo que debía cada casa al empezar',
     '<p style="font-size:13px;color:var(--ink-2);margin-bottom:10px">El adeudo de cada casa hasta ' +
-    esc(CC.fmt.periodo(CC.per.suma(inicio, -1)).toLowerCase()) + ', como lo traen de CondoVive (cuotas y recargos juntos). ' +
+    esc(CC.fmt.periodo(CC.per.suma(inicio, -1)).toLowerCase()) + ', como lo traen del sistema anterior (cuotas y recargos juntos). ' +
     'Deja en blanco las que no deben. Si debe varios meses, pon cuántos: así el sistema sabe desde cuándo debe.</p>' +
     '<div class="formrow" style="gap:8px;margin-bottom:10px">' +
     '<label class="btn btn--sm btn--soft" for="aArchivo">' + CC.ui.icono('reportes', 'i--sm') + ' Subir desde Excel o CSV</label>' +
@@ -419,7 +429,7 @@ function pasoAdeudos() {
         q('aTotal').textContent = n ? n + (n === 1 ? ' casa debe ' : ' casas deben ') + CC.fmt.money2(t) : 'Ninguna casa con adeudo';
       }
       total();
-      cuerpo.addEventListener('input', total);
+      cuerpo.querySelector('.padron').addEventListener('input', total);
       q('aCerrar').onclick = CC.ui.cerrarModal;
       q('aArchivo').onchange = function () {
         var f = q('aArchivo').files && q('aArchivo').files[0];

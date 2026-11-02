@@ -240,7 +240,7 @@ CC.Comprobantes = (function () {
     var doc = CC.PDF.nuevo({ ancho: 612, alto: fotoImg ? 792 : 396, titulo: 'Recibo ' + fol + ' · ' + g.concepto });
     var top = encabezado(doc, 'Recibo de egreso', fol, g.fecha, logo);
     var y = top + 24;
-    var rev = g.revision ? g.revision.nombre + ' · ' + CC.fmt.fechaCorta(String(g.revision.fecha).slice(0, 10)) : '';
+    var rev = g.revision ? g.revision.nombre + ' · ' + CC.fmt.fechaCorta(g.revision.fecha) : '';
 
     y = dato(doc, y, 'Pagamos a', g.proveedor, { negrita: true });
     y = dato(doc, y, 'La cantidad de', CC.fmt.letras(g.monto), { tam: 8.5, despues: 8 });
@@ -260,7 +260,7 @@ CC.Comprobantes = (function () {
     } else {
       var nCorr = (g.historial || []).length;
       doc.texto('REGISTRADO EN EL SISTEMA', DER, yb + 20, { tam: 6.8, negrita: true, color: GRIS });
-      doc.texto(CC.fmt.fechaCorta(String(g.registrado || g.fecha).slice(0, 10)), DER, yb + 34, { tam: 10, color: TINTA });
+      doc.texto(CC.fmt.fechaCorta(g.registrado || g.fecha), DER, yb + 34, { tam: 10, color: TINTA });
       doc.texto(nCorr ? 'Corregido ' + nCorr + (nCorr === 1 ? ' vez' : ' veces') + ' (queda el historial)' : 'Sin correcciones',
         DER, yb + 47, { tam: 8.5, color: GRIS });
     }
@@ -604,7 +604,7 @@ CC.Comprobantes = (function () {
     if (!e) return Promise.reject(new Error('No se encontró la entrega.'));
     return cargarLogo().then(function (logo) {
       var c = CC.Store.condominio();
-      var hoyISO = String(e.fecha).slice(0, 10);
+      var hoyISO = CC.fmt.local(e.fecha).slice(0, 10);
       var doc = CC.PDF.nuevo({ titulo: 'Acta de entrega-recepción · ' + (c.nombre || '') });
       var ancho = doc.ancho - 2 * M, LIMITE = doc.alto - 56;
       var y = encabezado(doc, 'Entrega-recepción', CC.fmt.fechaCorta(hoyISO), hoyISO, logo) + 30;
@@ -641,11 +641,15 @@ CC.Comprobantes = (function () {
       var cerrados = CC.Store.cierres().filter(function (x) { return !x.reabierto; }).map(function (x) { return x.periodo; }).sort();
       fila('Meses cerrados', cerrados.length ? 'hasta ' + CC.fmt.periodo(cerrados[cerrados.length - 1]) : 'ninguno todavía');
 
-      var pad = CC.Model.padron(CC.per.hoy()).filter(function (x) { return x.situacion.saldo > 0.005; })
+      // Lo vencido: la cuota del mes que todavía no vence no es deuda (se anota aparte)
+      var todas = CC.Model.padron(CC.per.hoy());
+      var pad = todas.filter(function (x) { return x.situacion.vencido > 0.005; })
         .sort(function (a, b) { return CC.Model.ordenCasas(a.unidad, b.unidad); });
-      var tot = pad.reduce(function (a, x) { return a + x.situacion.saldo; }, 0);
+      var tot = pad.reduce(function (a, x) { return a + x.situacion.vencido; }, 0);
+      var porVencer = todas.reduce(function (a, x) { return a + Math.max(0, x.situacion.saldo - x.situacion.vencido); }, 0);
       titulo('3. Quién debe');
-      fila('Total', pad.length ? pad.length + (pad.length === 1 ? ' casa debe ' : ' casas deben ') + CC.fmt.money2(tot) : 'Nadie debe');
+      fila('Vencido', pad.length ? pad.length + (pad.length === 1 ? ' casa debe ' : ' casas deben ') + CC.fmt.money2(tot) : 'Nadie debe');
+      if (porVencer > 0.005) fila('Por vencer', CC.fmt.money2(porVencer) + ' de cuotas de este mes que todavía no vencen');
       if (pad.length) {
         var cab = function () {
           doc.rect(M, y, ancho, 18, { relleno: SUAVE });
@@ -653,7 +657,7 @@ CC.Comprobantes = (function () {
           doc.texto('CASA', M + 8, y + 12, o);
           doc.texto('DUEÑO', M + 70, y + 12, o);
           doc.texto('DEBE DESDE', M + 330, y + 12, o);
-          doc.texto('DEBE', M + ancho - 8, y + 12, Object.assign({ alinear: 'der' }, o));
+          doc.texto('VENCIDO', M + ancho - 8, y + 12, Object.assign({ alinear: 'der' }, o));
           y += 18;
         };
         y += 4; cab();
@@ -662,7 +666,7 @@ CC.Comprobantes = (function () {
           doc.texto(x.unidad.clave, M + 8, y + 11.5, { tam: 9, negrita: true, color: TINTA });
           doc.texto(recortar(doc, x.unidad.propietario || '—', 245, { tam: 9 }), M + 70, y + 11.5, { tam: 9, color: TINTA2 });
           doc.texto(x.situacion.desde ? CC.fmt.periodo(x.situacion.desde) : '—', M + 330, y + 11.5, { tam: 9, color: TINTA2 });
-          doc.texto(CC.fmt.money2(x.situacion.saldo), M + ancho - 8, y + 11.5, { tam: 9, color: TINTA, alinear: 'der' });
+          doc.texto(CC.fmt.money2(x.situacion.vencido), M + ancho - 8, y + 11.5, { tam: 9, color: TINTA, alinear: 'der' });
           doc.linea(M, y + 16, M + ancho, y + 16, { grosor: 0.3, color: LINEA });
           y += 16;
         });

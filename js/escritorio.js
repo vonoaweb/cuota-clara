@@ -12,6 +12,9 @@ window.CC = window.CC || {};
   if (!E) return;
 
   var pendiente = null, temporizador = null;
+  // Si el archivo existe pero no se pudo leer, no se escribe nada encima (el programa
+  // ya lo revisa al abrir; esto es por si acaso)
+  var noTocar = false;
 
   /* Guardar es inmediato para quien usa el sistema; al disco va un instante
      después, para no escribir el archivo diez veces en un segundo. */
@@ -21,9 +24,15 @@ window.CC = window.CC || {};
     leer: function () {
       var t = E.leerSync();
       if (!t) return null;
-      try { return JSON.parse(t); } catch (e) { return null; }
+      try { return JSON.parse(t); } catch (e) {
+        noTocar = true;
+        window.alert('El archivo de datos no se pudo leer. Cierre Cuota Clara y vuelva a abrirlo; ' +
+          'si sigue igual, comuníquese con Vonoa Web. No se guardará nada mientras tanto.');
+        return null;
+      }
     },
     escribir: function (datos) {
+      if (noTocar) return false;
       pendiente = JSON.stringify(datos);
       clearTimeout(temporizador);
       temporizador = setTimeout(function () {
@@ -60,6 +69,15 @@ window.CC = window.CC || {};
     };
     document.getElementById('bLuego').onclick = function () { aviso.remove(); };
   });
+
+  // Recibos, reportes y respaldos van a Documentos\Cuota Clara\Documentos: que se sepa dónde quedó
+  if (E.alDocumentoGuardado) {
+    E.alDocumentoGuardado(function (ruta) {
+      var partes = String(ruta || '').split(/[\\/]/);
+      var i = partes.indexOf('Cuota Clara');
+      CC.ui.toast('Guardado en ' + (i >= 0 ? 'Documentos\\' + partes.slice(i).join('\\') : ruta), 'good');
+    });
+  }
 
   CC.Escritorio = {
     version: E.version,

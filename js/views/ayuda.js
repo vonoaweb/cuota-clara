@@ -11,7 +11,7 @@ CC.vistas = CC.vistas || {};
 CC.Ayuda = {
   /* Lo que más se busca: qué quiero hacer → dónde está */
   donde: [
-    ['Dar de alta el condominio, las casas y los usuarios', 'Primeros pasos (en el menú, hasta arriba)'],
+    ['Dar de alta el condominio, las casas y los usuarios', 'Primeros pasos (en el menú mientras falte algo; siempre en Ajustes → «Abrir Primeros pasos»)'],
     ['Registrar que alguien pagó', 'Botón «Registrar pago» en Panel, Cobranza o dentro de la casa'],
     ['Ver cuánto debe una casa y mandarle su estado de cuenta', 'Casas → toca la casa → «Estado de cuenta PDF»'],
     ['Avisar por WhatsApp o correo a quien debe', 'Adeudos → «Enviar avisos»'],
@@ -29,7 +29,8 @@ CC.Ayuda = {
     ['Revisar un recibo en papel', 'Folios y bitácora → «Buscar un folio»'],
     ['Cerrar el mes (comité)', 'Reportes y cierre → «Cerrar el mes»'],
     ['Cambio de administradora', 'Reportes y cierre → «Entrega-recepción»'],
-    ['Cambiar la cuota, los recargos o poner el logo', 'Ajustes'],
+    ['Cambiar la cuota o los recargos', 'Primeros pasos → «Cuota y recargos» (la de una sola casa: Casas → la casa → «Editar»)'],
+    ['Poner el logo del condominio', 'Ajustes → Datos del condominio'],
     ['Agregar un usuario o cambiar una contraseña', 'Ajustes → Usuarios y contraseñas'],
     ['Guardar un respaldo en una memoria USB', 'Ajustes → «Guardar base de datos»'],
     ['Pantalla clara u oscura, letra más grande', 'Abajo en el menú (Claro · Oscuro · Auto) o Ajustes → Pantalla']
@@ -49,13 +50,13 @@ CC.Ayuda = {
   /* Pantalla por pantalla. id = la sección del menú (el botón Ayuda de cada pantalla abre la suya) */
   secciones: [
     {
-      id: 'inicio', titulo: 'Primeros pasos', donde: 'Menú, hasta arriba (mientras falte algo)',
+      id: 'inicio', titulo: 'Primeros pasos', donde: 'Menú, hasta arriba (mientras falte algo); después, Ajustes → «Abrir Primeros pasos»',
       para: 'Dar de alta el condominio la primera vez. El sistema empieza en blanco: sin casas ni nombres.',
       pasos: [
         'Datos del condominio: nombre, dirección, quién administra, la cuenta del banco y el logo.',
         'Cuota y recargos: cuánto paga cada casa, hasta qué día, los recargos y desde qué mes empiezan.',
         'Las casas: se crean de un jalón con su número (por ejemplo de la 1 a la 105). Luego se llena el dueño, teléfono y correo de cada una, de corrido o subiendo un Excel.',
-        'Lo que debía cada casa: el adeudo que traen de CondoVive. Si alguna debe varios meses, se pone cuántos.',
+        'Lo que debía cada casa: el adeudo que traen del sistema o la libreta anterior. Si alguna debe varios meses, se pone cuántos.',
         'Banco y caja chica: el saldo del banco y el efectivo de la caja ese día.',
         'Usuarios: uno de la administración y uno del comité, cada quien con su contraseña.',
         'Hoja de arranque: un PDF con todo lo capturado, para que lo firmen la administración y el comité.'
@@ -79,9 +80,9 @@ CC.Ayuda = {
         'Busca por número o nombre; filtra por las que deben o las que no tienen teléfono o correo.',
         'Toca una casa para ver su estado de cuenta, su historial (pagos, cargos, avisos y notas) y sus botones.',
         'Dentro de la casa: «Registrar pago», «Cargo extra» (casa club, multa), «Avisar adeudo», «Anotar», «Estado de cuenta PDF» y «Editar».',
-        'Para cambiar muchas casas a la vez: Primeros pasos → Las casas → «Ver o corregir».'
+        'Para cambiar muchas casas a la vez: Ajustes → «Abrir Primeros pasos» → Las casas → «Ver o corregir».'
       ],
-      ojo: 'Una casa con pagos no se puede eliminar: sus recibos llevan folio.'
+      ojo: 'Una casa con pagos o convenio no se puede eliminar: llevan folio. Si tiene cargos, solo la elimina el comité.'
     },
     {
       id: 'cobranza', titulo: 'Cobranza', donde: 'Menú → Cobrar → Cobranza',
@@ -139,7 +140,7 @@ CC.Ayuda = {
     },
     {
       id: 'avisos', titulo: 'Avisos', donde: 'Menú → Avisar → Avisos',
-      para: 'El tablero de avisos que ven los vecinos en su portal (corte de agua, asamblea…).',
+      para: 'Los avisos generales del condominio (corte de agua, asamblea…), para tenerlos a la mano y mandarlos.',
       pasos: ['«Publicar aviso»: título, texto y fecha. Se puede quitar cuando ya no aplique.']
     },
     {
@@ -147,7 +148,7 @@ CC.Ayuda = {
       para: 'El cierre del mes para la asamblea, los reportes del año y el cierre con candado.',
       pasos: [
         'Escoge el mes arriba (Periodo). «Imprimir» saca el cierre listo para presentar; «Copiar resumen» lo deja para pegar en el grupo.',
-        'Egresos del año por categoría, lo recuperado de cartera vencida y el histórico casa por casa: toca una cifra para ver su detalle.',
+        'Egresos del año por categoría, lo recuperado de cartera vencida y el histórico casa por casa. En los egresos, toca una cifra para ver de qué se compone.',
         '«Cerrar el mes» (comité): revisa que los egresos estén revisados, que se haya contado la caja y que el banco coincida. Al cerrar, lo de ese mes ya no se cambia.',
         '«Reabrir el mes»: solo el comité, escribiendo por qué. Queda en la bitácora.',
         '«Entrega-recepción»: cuando cambia quien administra.'

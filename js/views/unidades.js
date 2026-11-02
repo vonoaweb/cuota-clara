@@ -7,9 +7,11 @@ var filtroUnidades = { texto: '', estado: 'todas', calle: 'todas' };
 
 /* ---------- Formulario de alta y edicion ---------- */
 function formularioUnidad(unidad) {
+  // Con cuota igual para todas (la de Primeros pasos), una casa nueva nace con esa cuota
+  var cuotaCasa = Number(CC.Store.condominio().cuotaCasa) || 0;
   var u = unidad || {
     clave: '', calle: '', numero: '', prototipo: '', m2: '', propietario: '',
-    inquilino: '', telefono: '', email: '', ocupacion: 'Propietario', cuotaOverride: null
+    inquilino: '', telefono: '', email: '', ocupacion: 'Propietario', cuotaOverride: cuotaCasa || null
   };
   var esc = CC.ui.esc;
   var titulo = unidad ? 'Editar casa ' + u.clave : 'Nueva casa';
@@ -22,10 +24,10 @@ function formularioUnidad(unidad) {
   CC.ui.modal(titulo,
     '<div class="formgrid">' +
     '<label class="field"><span class="field__lab">Identificador</span>' +
-    '<input class="input" id="fClave" value="' + esc(u.clave) + '" placeholder="Fresnos 12" required>' +
+    '<input class="input" id="fClave" value="' + esc(u.clave) + '" placeholder="12" required>' +
     '<span class="field__hint">Como se le conoce a la casa en el condominio</span></label>' +
     '<label class="field"><span class="field__lab">Calle</span>' +
-    '<input class="input" id="fCalle" value="' + esc(u.calle || '') + '" placeholder="Circuito Fresnos" list="listaCalles">' +
+    '<input class="input" id="fCalle" value="' + esc(u.calle || '') + '" placeholder="Nombre de la calle" list="listaCalles">' +
     '<datalist id="listaCalles">' +
     listaCalles.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') +
     '</datalist></label>' +
@@ -36,10 +38,10 @@ function formularioUnidad(unidad) {
     '<input class="input" id="fProto" value="' + esc(u.prototipo || '') + '" placeholder="A, B, C…"></label>' +
     '<label class="field"><span class="field__lab">Metros cuadrados</span>' +
     '<input class="input num" id="fM2" type="number" min="0" step="0.01" value="' + esc(u.m2) + '">' +
-    '<span class="field__hint">Define el indiviso y con él la cuota</span></label>' +
-    '<label class="field"><span class="field__lab">Cuota fija (opcional)</span>' +
-    '<input class="input num" id="fCuota" type="number" min="0" step="0.01" value="' + esc(u.cuotaOverride === null || u.cuotaOverride === undefined ? '' : u.cuotaOverride) + '" placeholder="Prorrateo por indiviso">' +
-    '<span class="field__hint">Si la capturas, ignora el indiviso</span></label>' +
+    '<span class="field__hint">' + (cuotaCasa ? 'Opcional' : 'Define el indiviso y con él la cuota') + '</span></label>' +
+    '<label class="field"><span class="field__lab">' + (cuotaCasa ? 'Cuota mensual' : 'Cuota fija (opcional)') + '</span>' +
+    '<input class="input num" id="fCuota" type="number" min="0" step="0.01" value="' + esc(u.cuotaOverride === null || u.cuotaOverride === undefined ? '' : u.cuotaOverride) + '" placeholder="' + (cuotaCasa ? esc(cuotaCasa) : 'Prorrateo por indiviso') + '">' +
+    '<span class="field__hint">' + (cuotaCasa ? 'La de todas las casas es ' + esc(CC.fmt.money2(cuotaCasa)) : 'Si la capturas, ignora el indiviso') + '</span></label>' +
     '<label class="field"><span class="field__lab">Propietario</span>' +
     '<input class="input" id="fProp" value="' + esc(u.propietario) + '"></label>' +
     '<label class="field"><span class="field__lab">Inquilino (si aplica)</span>' +
@@ -90,6 +92,7 @@ function formularioUnidad(unidad) {
         var clave = cuerpo.querySelector('#fClave').value.trim();
         if (!clave) { CC.ui.toast('La casa necesita un identificador', 'crit'); return; }
         var cuotaTxt = cuerpo.querySelector('#fCuota').value.trim();
+        if (cuotaTxt === '' && cuotaCasa) cuotaTxt = String(cuotaCasa);
         var numTxt = cuerpo.querySelector('#fNumero').value.trim();
         var datos = {
           clave: clave,
@@ -114,14 +117,17 @@ function formularioUnidad(unidad) {
     });
 }
 
+/* Con metros capturados la cuota sale del indiviso; sin ellos (cuota igual para todas) no se menciona. */
+function hayMetros() { return CC.Model.totalM2() > 0; }
+
 /* ---------- Vista: padron ---------- */
 CC.vistas.unidades = {
   titulo: 'Casas',
   sub: function () {
     var n = CC.Store.unidades().length;
     if (!n) return 'Sin casas capturadas';
-    return n + (n === 1 ? ' casa' : ' casas') + ' · ' +
-      CC.fmt.num(CC.Model.totalM2()) + ' m² de construcción en total';
+    return n + (n === 1 ? ' casa' : ' casas') +
+      (hayMetros() ? ' · ' + CC.fmt.num(CC.Model.totalM2()) + ' m² de construcción en total' : '');
   },
   acciones: function () {
     return [{ texto: 'Nueva casa', icono: 'mas', clase: 'btn', accion: 'nuevaUnidad' }];
@@ -134,8 +140,7 @@ CC.vistas.unidades = {
     if (!pad.length) {
       return '<div class="panelbox"><div class="empty">' +
         '<strong>Todavía no hay casas</strong>' +
-        '<p>Captura las casas del condominio. El metraje de cada una define su ' +
-        'porcentaje de indiviso y con él su cuota mensual.</p>' +
+        '<p>Captura las casas del condominio, o créalas todas de un jalón en <a href="#/inicio">Primeros pasos</a>.</p>' +
         '<button class="btn" data-accion="nuevaUnidad" style="margin-top:8px">Agregar la primera casa</button>' +
         '</div></div>';
     }
@@ -208,26 +213,27 @@ CC.vistas.unidades = {
 
     /* --- Renglones, con encabezado cuando cambia de calle --- */
     var calleActual = null;
+    var metros = hayMetros(), columnas = metros ? 7 : 6;
     var filas = visibles.map(function (x) {
       var u = x.unidad, s = x.situacion;
       var encabezado = '';
       if (f.calle === 'todas' && u.calle !== calleActual) {
         calleActual = u.calle;
-        encabezado = '<tr class="ledger__grupo"><td colspan="7">' + esc(u.calle || 'Sin calle') +
+        encabezado = '<tr class="ledger__grupo"><td colspan="' + columnas + '">' + esc(u.calle || 'Sin calle') +
           ' <span class="muted">· ' + conteoCalle[u.calle || 'Sin calle'] + ' casas</span></td></tr>';
       }
 
       var clase = s.estado === 'moroso' ? 'row--crit' : s.estado === 'vencido' ? 'row--warn' : '';
       return encabezado + '<tr class="' + clase + ' fila-clic" data-casa="' + esc(u.id) + '" title="Ver la casa">' +
         '<td><a href="#/unidad/' + esc(u.id) + '" class="strong">' + esc(u.clave) + '</a>' +
-        (u.prototipo ? '<div class="muted" style="font-size:11px">Tipo ' + esc(u.prototipo) + ' · ' + esc(u.m2) + ' m²</div>' : '') +
+        (u.prototipo ? '<div class="muted" style="font-size:11px">Tipo ' + esc(u.prototipo) + (Number(u.m2) > 0 ? ' · ' + esc(u.m2) + ' m²' : '') + '</div>' : '') +
         '</td>' +
         '<td><div class="cellstack"><span>' + esc(u.inquilino || u.propietario || '—') + '</span>' +
         (u.inquilino ? '<small>Inquilino · prop. ' + esc(u.propietario) + '</small>'
           : '<small>' + esc(u.ocupacion || '') + '</small>') + '</div></td>' +
-        '<td><div class="indiviso"><span class="indiviso__bar"><i style="width:' +
-        Math.min(100, x.indiviso * 100 * 90).toFixed(1) + '%"></i></span>' +
-        '<span class="indiviso__val">' + esc(CC.fmt.pct(x.indiviso)) + '</span></div></td>' +
+        (metros ? '<td><div class="indiviso"><span class="indiviso__bar"><i style="width:' +
+          Math.min(100, x.indiviso * 100 * 90).toFixed(1) + '%"></i></span>' +
+          '<span class="indiviso__val">' + esc(CC.fmt.pct(x.indiviso)) + '</span></div></td>' : '') +
         '<td class="r">' + esc(CC.fmt.money2(x.cuota)) + '</td>' +
         '<td class="r ' + (s.saldo > 0.005 ? 'strong' : 'muted') + '">' +
         (s.aFavor > 0.005 ? '<span style="color:var(--good)">' + esc(CC.fmt.money2(s.aFavor)) + ' a favor</span>'
@@ -266,10 +272,10 @@ CC.vistas.unidades = {
 
       '<div class="panelbox"><div class="tablewrap"><table class="ledger ledger--padron">' +
       '<thead><tr>' +
-      '<th>Casa</th><th>Residente</th><th>Indiviso</th>' +
+      '<th>Casa</th><th>Residente</th>' + (metros ? '<th>Indiviso</th>' : '') +
       '<th class="r">Cuota mensual</th><th class="r">Saldo</th><th class="c">Estado</th><th class="noprint"></th>' +
       '</tr></thead>' +
-      '<tbody>' + (filas || '<tr><td colspan="7"><div class="empty"><strong>Sin coincidencias</strong>' +
+      '<tbody>' + (filas || '<tr><td colspan="' + columnas + '"><div class="empty"><strong>Sin coincidencias</strong>' +
         '<p>Ninguna casa cumple con el filtro activo.</p></div></td></tr>') + '</tbody>' +
       (visibles.length ? '<tfoot><tr>' +
         '<td colspan="3">' + visibles.length + ' de ' + pad.length + ' casas</td>' +
@@ -304,8 +310,8 @@ CC.vistas.unidad = {
   sub: function (ctx) {
     var u = CC.Store.unidad(ctx.param);
     if (!u) return '';
-    return (u.inquilino ? u.inquilino + ' (inquilino) · prop. ' + u.propietario : u.propietario) +
-      ' · ' + CC.fmt.num(u.m2) + ' m²';
+    return (u.inquilino ? u.inquilino + ' (inquilino) · prop. ' + u.propietario : (u.propietario || 'Sin propietario')) +
+      (Number(u.m2) > 0 ? ' · ' + CC.fmt.num(u.m2) + ' m²' : '');
   },
   acciones: function (ctx) {
     if (!CC.Store.unidad(ctx.param)) return [];
@@ -379,8 +385,8 @@ CC.vistas.unidad = {
       esc(u.inquilino || u.propietario) + (u.telefono ? ' · ' + esc(u.telefono) : '') + '</p></div>' +
       '<div class="recibo__folio">' +
       'Corte: ' + esc(CC.fmt.periodo(ctx.periodo)) + '<br>' +
-      'Emitido: ' + esc(CC.fmt.fechaCorta(CC.per.hoyISO())) + '<br>' +
-      'Indiviso: ' + esc(CC.fmt.pct(CC.Model.indiviso(u))) + '</div>' +
+      'Emitido: ' + esc(CC.fmt.fechaCorta(CC.per.hoyISO())) +
+      (hayMetros() ? '<br>Indiviso: ' + esc(CC.fmt.pct(CC.Model.indiviso(u))) : '') + '</div>' +
       '</div>' +
       '<div class="tablewrap"><table class="ledger">' +
       '<thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Cargo</th><th class="r">Abono</th><th class="r">Saldo</th></tr></thead>' +
@@ -400,7 +406,7 @@ CC.vistas.unidad = {
       '</div>';
 
     var cifras = CC.ui.stats([
-      { lab: 'Cuota mensual', val: CC.fmt.money2(cuota), nota: '<span>' + esc(CC.fmt.pct(CC.Model.indiviso(u))) + ' de indiviso</span>' },
+      { lab: 'Cuota mensual', val: CC.fmt.money2(cuota), nota: '<span>' + (hayMetros() ? esc(CC.fmt.pct(CC.Model.indiviso(u))) + ' de indiviso' : 'cuota fija') + '</span>' },
       {
         lab: 'Saldo', val: CC.fmt.money2(Math.abs(s.saldo)),
         tono: s.saldo > 0.005 ? 'crit' : 'good',
@@ -472,7 +478,7 @@ CC.vistas.unidad = {
           etiqueta: 'Pago cancelado',
           tono: 'mute',
           titulo: CC.fmt.money2(p.monto) + ' · folio ' + CC.Comprobantes.folio('P-', p.folio) + ' (no cuenta)',
-          detalle: 'Se canceló el ' + CC.fmt.fecha(String(p.canceladoEl || '').slice(0, 10)) +
+          detalle: 'Se canceló el ' + CC.fmt.fecha(p.canceladoEl || '') +
             (p.motivoCancelacion ? ': ' + p.motivoCancelacion : '')
         });
       });

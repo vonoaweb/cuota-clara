@@ -205,7 +205,7 @@ CC.vistas.folios = {
           todas.slice(0, MAX).map(function (b) {
             var grave = /^(Canceló|Borró|Eliminó|Condonó|Reabrió|Corrigió|Dio de baja|Abrió una base|Cambió los datos de la cuenta)/.test(b.accion);
             return '<tr' + (grave ? ' class="row--warn"' : '') + '><td class="mono" style="font-size:12px;white-space:nowrap">' +
-              esc(CC.fmt.fechaCorta(String(b.fecha).slice(0, 10))) + ' ' + esc(String(b.fecha).slice(11, 16)) + '</td>' +
+              esc(CC.fmt.fechaCorta(b.fecha)) + ' ' + esc(CC.fmt.local(b.fecha).slice(11, 16)) + '</td>' +
               '<td>' + (b.por ? esc(b.por.nombre) : '<span class="muted">—</span>') + '</td>' +
               '<td class="strong">' + esc(b.accion) + '</td><td>' + esc(b.detalle || '') + '</td></tr>';
           }).join('') + '</tbody></table></div>' +
@@ -276,7 +276,7 @@ CC.vistas.folios = {
   exportarBitacora: function () {
     CC.ui.descargarCSV('Bitacora ' + CC.per.hoyISO(), ['Fecha', 'Hora', 'Quién', 'Qué hizo', 'Detalle'],
       CC.Store.bitacora().map(function (b) {
-        return [String(b.fecha).slice(0, 10), String(b.fecha).slice(11, 19), b.por ? b.por.nombre : '', b.accion, b.detalle || ''];
+        return [CC.fmt.local(b.fecha).slice(0, 10), CC.fmt.local(b.fecha).slice(11, 19), b.por ? b.por.nombre : '', b.accion, b.detalle || ''];
       }));
   },
 

@@ -56,23 +56,37 @@ CC.fmt = (function () {
       if (!p) return '';
       return MESES_CORTO[Number(p.split('-')[1]) - 1] || '';
     },
+    /**
+     * Las marcas de tiempo se guardan en hora de Greenwich ('2026-11-03T02:30:00.000Z').
+     * Para mostrarlas se pasan a la hora de la computadora: '2026-11-02T20:30:00'.
+     * Una fecha sola ('2026-11-02') se queda igual.
+     */
+    local: function (iso) {
+      var t = String(iso || '');
+      if (!/T\d\d:\d\d/.test(t) || !/(Z|[+-]\d\d:?\d\d)$/.test(t)) return t;
+      var d = new Date(t);
+      if (isNaN(d.getTime())) return t;
+      var dos = function (n) { return String(n).padStart(2, '0'); };
+      return d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate()) + 'T' +
+        dos(d.getHours()) + ':' + dos(d.getMinutes()) + ':' + dos(d.getSeconds());
+    },
     /** '2026-09-14' -> '14 sep 2026' */
     fecha: function (iso) {
       if (!iso) return '—';
-      var a = String(iso).slice(0, 10).split('-');
+      var a = CC.fmt.local(iso).slice(0, 10).split('-');
       if (a.length < 3) return iso;
       return Number(a[2]) + ' ' + (MESES_CORTO[Number(a[1]) - 1] || '') + ' ' + a[0];
     },
     /** '2026-09-14' -> '14/09/2026' — para documentos imprimibles */
     fechaCorta: function (iso) {
       if (!iso) return '—';
-      var a = String(iso).slice(0, 10).split('-');
+      var a = CC.fmt.local(iso).slice(0, 10).split('-');
       return a.length < 3 ? iso : a[2] + '/' + a[1] + '/' + a[0];
     },
     /** '2026-10-12' -> '12 de octubre de 2026' — para convenios y cartas */
     fechaLarga: function (iso) {
       if (!iso) return '';
-      var a = String(iso).slice(0, 10).split('-');
+      var a = CC.fmt.local(iso).slice(0, 10).split('-');
       return Number(a[2]) + ' de ' + (MESES[Number(a[1]) - 1] || '') + ' de ' + a[0];
     },
     /** 2173.5 -> 'DOS MIL CIENTO SETENTA Y TRES PESOS 50/100 M.N.' — como en un cheque */

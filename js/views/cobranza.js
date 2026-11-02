@@ -275,7 +275,10 @@ CC.vistas.cobranza = {
 
       '<label class="field"><span class="field__lab">Periodo que cubre</span>' +
       '<select class="input" id="pPeriodo">' + periodos.map(function (x) {
-        return '<option value="' + esc(x) + '"' + (x === periodo ? ' selected' : '') + '>' + esc(CC.fmt.periodo(x)) + '</option>';
+        // si el mes de arriba ya está cerrado, el pago de hoy cubre el mes en curso
+        var marcado = CC.Store.mesCerrado(periodo) && periodos.indexOf(CC.per.hoy()) >= 0 ? CC.per.hoy() : periodo;
+        return '<option value="' + esc(x) + '"' + (x === marcado ? ' selected' : '') + '>' + esc(CC.fmt.periodo(x)) +
+          (CC.Store.mesCerrado(x) ? ' (cerrado)' : '') + '</option>';
       }).join('') + '</select></label>' +
 
       '<label class="field"><span class="field__lab">Forma de pago</span>' +
@@ -392,6 +395,16 @@ CC.vistas.cobranza = {
         cuerpo.querySelector('#pOk').onclick = function () {
           var monto = Number(inMonto.value);
           if (!(monto > 0)) { CC.ui.toast('Captura un monto mayor a cero', 'crit'); return; }
+          // Antes de crear nada: ningún mes que toque este pago puede estar cerrado
+          var fechaP = cuerpo.querySelector('#pFecha').value || CC.per.hoyISO();
+          var tocados = [CC.per.de(fechaP), cuerpo.querySelector('#pPeriodo').value]
+            .concat(adelanto.map(function (c) { return c.periodo; }));
+          var cerrado = tocados.filter(function (x) { return CC.Store.mesCerrado(x); })[0];
+          if (cerrado) {
+            CC.ui.toast('El mes de ' + CC.fmt.periodo(cerrado) + ' ya está cerrado. Cambia la fecha o el periodo, ' +
+              'o pide al comité que lo reabra en Reportes.', 'crit');
+            return;
+          }
           if (adelanto.length) CC.Store.agregarCargos(adelanto.map(function (c) { return Object.assign({}, c); }));
           var nAd = Number(selQue.value) || 0;
           var notaAd = nAd && adelanto.length
@@ -401,7 +414,7 @@ CC.vistas.cobranza = {
           var pago = CC.Store.agregarPago({
             unidadId: selU.value,
             monto: monto,
-            fecha: cuerpo.querySelector('#pFecha').value || CC.per.hoyISO(),
+            fecha: fechaP,
             periodo: cuerpo.querySelector('#pPeriodo').value,
             metodo: cuerpo.querySelector('#pMetodo').value,
             cuenta: selCuenta.value,

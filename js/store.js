@@ -265,9 +265,9 @@ CC.Store = (function () {
    * y nota (lo que queda en la bitácora: [qué hizo, detalle]).
    */
   var REGLAS = {
-    agregarPago: { nuevo: true, mes: function (p) { return [PER(p.fecha)]; },
+    agregarPago: { nuevo: true, mes: function (p) { return [PER(p.fecha), p.periodo]; },
       nota: function (r) { return ['Registró el pago ' + F4('P-', r.folio), CASA(r.unidadId) + ' · ' + MONEDA(r.monto) + ' · ' + (r.metodo || '')]; } },
-    cancelarPago: { mes: function (id) { return [PER(pagoDe(id).fecha)]; },
+    cancelarPago: { mes: function (id) { var p = pagoDe(id); return [PER(p.fecha), p.periodo]; },
       nota: function (r, id, motivo) { var p = pagoDe(id); return ['Canceló el pago ' + F4('P-', p.folio), CASA(p.unidadId) + ' · ' + MONEDA(p.monto) + ' · motivo: ' + (motivo || '—')]; } },
     agregarCargo: { nuevo: true, mes: function (c) { return [c.periodo]; },
       nota: function (r) { return ['Cargó ' + (r.concepto || 'un cargo'), CASA(r.unidadId) + ' · ' + MONEDA(r.monto)]; } },
@@ -292,29 +292,48 @@ CC.Store = (function () {
     editarTraspaso: { mes: function (id, c) { return [PER(traspasoDe(id).fecha), c && PER(c.fecha)]; },
       nota: function (r) { return r ? ['Corrigió el traspaso ' + F4('T-', r.folio), 'cambió: ' + (camposCorregidos(r) || '—')] : null; } },
     cancelarTraspaso: { mes: function (id) { return [PER(traspasoDe(id).fecha)]; },
-      nota: function (r, id) { var t = traspasoDe(id); return ['Canceló el traspaso ' + F4('T-', t.folio), MONEDA(t.monto)]; } },
+      nota: function (r, id, motivo) { var t = traspasoDe(id); return ['Canceló el traspaso ' + F4('T-', t.folio), MONEDA(t.monto) + ' · motivo: ' + (motivo || '—')]; } },
     agregarIngreso: { nuevo: true, mes: function (i) { return [PER(i.fecha)]; },
       nota: function (r) { return ['Registró el ingreso ' + F4('I-', r.folio), r.concepto + ' · ' + MONEDA(r.monto)]; } },
     cancelarIngreso: { mes: function (id) { return [PER(ingresoDe(id).fecha)]; },
-      nota: function (r, id) { var i = ingresoDe(id); return ['Canceló el ingreso ' + F4('I-', i.folio), (i.concepto || '') + ' · ' + MONEDA(i.monto)]; } },
+      nota: function (r, id, motivo) { var i = ingresoDe(id); return ['Canceló el ingreso ' + F4('I-', i.folio), (i.concepto || '') + ' · ' + MONEDA(i.monto) + ' · motivo: ' + (motivo || '—')]; } },
     agregarArqueo: { nuevo: true,
       nota: function (r) { return ['Contó la caja chica (arqueo)', 'contado ' + MONEDA(r.contado) + ' · diferencia ' + MONEDA(r.diferencia)]; } },
     actualizarCuenta: { candadoInicial: true,
       nota: function (r) { return r ? ['Cambió los datos de la cuenta ' + r.nombre, 'saldo inicial ' + MONEDA(r.saldoInicial)] : null; } },
     agregarUnidad: { nuevo: true, nota: function (r) { return ['Dio de alta la casa ' + r.clave, r.propietario || '']; } },
     actualizarUnidad: { nota: function (r, id, c) { return r ? ['Cambió los datos de la casa ' + r.clave, Object.keys(c || {}).join(', ')] : null; } },
-    borrarUnidad: { antes: function (id) { return buscar(estado.unidades, id) || {}; },
-      nota: function (r, id, antes) { return r ? ['Eliminó la casa ' + antes.clave, antes.propietario || ''] : null; } },
+    borrarUnidad: { mes: function (id) { return estado.cargos.filter(function (c) { return c.unidadId === id; }).map(function (c) { return c.periodo; }); },
+      antes: function (id) {
+        var u = buscar(estado.unidades, id) || {};
+        var debia = estado.cargos.filter(function (c) { return c.unidadId === id; })
+          .reduce(function (a, c) { return a + (Number(c.monto) || 0); }, 0);
+        return { clave: u.clave, propietario: u.propietario, debia: debia };
+      },
+      nota: function (r, id, antes) {
+        return r ? ['Eliminó la casa ' + antes.clave, (antes.propietario || 'sin propietario') +
+          (antes.debia > 0.005 ? ' · se borraron sus cargos por ' + MONEDA(antes.debia) : '')] : null;
+      } },
     agregarUnidades: { nota: function (n, l) { return ['Dio de alta ' + n + (n === 1 ? ' casa' : ' casas'), l.length ? 'de la ' + l[0].clave + ' a la ' + l[l.length - 1].clave : '']; } },
     actualizarUnidades: { nota: function (n) { return n ? ['Llenó el padrón', n + (n === 1 ? ' casa' : ' casas') + ' con cambios'] : null; } },
-    ponerSaldosAnteriores: { mes: function (l) { return l.map(function (c) { return c.periodo; }); },
-      nota: function (n, l) {
-        var t = l.reduce(function (a, c) { return a + (Number(c.monto) || 0); }, 0);
-        var casas = {}; l.forEach(function (c) { casas[c.unidadId] = 1; });
-        return ['Puso lo que debía cada casa al empezar', Object.keys(casas).length + ' casas · ' + MONEDA(t)];
+    ponerSaldosAnteriores: { candadoInicial: true, mes: function (l) { return l.map(function (c) { return c.periodo; }); },
+      antes: function () { return estado.cargos.filter(function (c) { return c.tipo === 'inicial'; }); },
+      nota: function (n, l, antes) {
+        var resumen = function (lista) {
+          var t = lista.reduce(function (a, c) { return a + (Number(c.monto) || 0); }, 0);
+          var casas = {}; lista.forEach(function (c) { casas[c.unidadId] = 1; });
+          var k = Object.keys(casas).length;
+          return k + (k === 1 ? ' casa · ' : ' casas · ') + MONEDA(t);
+        };
+        if (!antes.length) return ['Puso lo que debía cada casa al empezar', resumen(l)];
+        return ['Corrigió lo que debía cada casa al empezar', 'antes: ' + resumen(antes) + ' → ahora: ' + resumen(l)];
       } },
     agregarConvenio: { nuevo: true, nota: function (r) { return ['Hizo el convenio ' + F4('CV-', r.folio), CASA(r.unidadId) + ' · ' + MONEDA(r.adeudo)]; } },
-    actualizarConvenio: { nota: function (r, id, c) { return r ? ['Cambió el convenio ' + F4('CV-', r.folio), Object.keys(c || {}).join(', ')] : null; } },
+    actualizarConvenio: { nota: function (r, id, c) {
+      if (!r) return null;
+      if (c && c.estado === 'cancelado') return ['Canceló el convenio ' + F4('CV-', r.folio), CASA(r.unidadId) + ' · motivo: ' + (c.motivoCancelacion || '—')];
+      return ['Cambió el convenio ' + F4('CV-', r.folio), Object.keys(c || {}).join(', ')];
+    } },
     actualizarCondominio: { nota: function (r, c) { return ['Cambió los datos del condominio', Object.keys(c || {}).filter(function (k) { return k !== 'logo'; }).join(', ') || 'logo']; } },
     actualizarCategorias: { nota: function () { return ['Cambió las categorías y el presupuesto', '']; } },
     agregarUsuario: { rol: 'comite-o-primero',
@@ -618,13 +637,20 @@ CC.Store = (function () {
     },
     /** Quien revisa (el comité o el tesorero) da por buenos los egresos: queda su nombre y la fecha. */
     revisarGastos: function (ids, nombre) {
-      var fecha = new Date().toISOString();
+      var fecha = new Date().toISOString(), yo = quien();
       ids.forEach(function (id) {
         var g = buscar(estado.gastos, id);
-        if (g) g.revision = { nombre: nombre, fecha: fecha };
+        // nadie revisa lo que él mismo capturó o corrigió
+        if (g && !api.tocoElGasto(g, yo)) g.revision = { nombre: nombre, fecha: fecha };
       });
       estado.meta.demo = false;
       guardar();
+    },
+    /** Si el usuario capturó el egreso o lo corrigió alguna vez (entonces no lo puede revisar). */
+    tocoElGasto: function (g, u) {
+      if (!u || !g) return false;
+      if (g.registradoPor && g.registradoPor.id === u.id) return true;
+      return (g.historial || []).some(function (h) { return h.por && h.por.id === u.id; });
     },
     _anotarProveedor: function (nombre) {
       nombre = String(nombre || '').trim();
@@ -682,9 +708,20 @@ CC.Store = (function () {
       if (u) { Object.assign(u, cambios); guardar(); }
       return u;
     },
-    /** Solo se borra una casa sin pagos: sus recibos llevan folio y no puede faltar ninguno. */
+    /**
+     * Solo se borra una casa sin pagos ni convenios (llevan folio y no puede faltar
+     * ninguno). Si tiene cargos, solo la borra el comité: borrarla borra lo que debe.
+     */
     borrarUnidad: function (id) {
       if (estado.pagos.some(function (p) { return p.unidadId === id; })) return false;
+      if ((estado.convenios || []).some(function (c) { return c.unidadId === id; })) {
+        throw Bloqueo('Esta casa tiene un convenio con folio; no se puede eliminar.');
+      }
+      var debe = estado.cargos.some(function (c) { return c.unidadId === id && Number(c.monto) > 0.005; });
+      var u = CC.Sesion && CC.Sesion.hayUsuarios() ? CC.Sesion.usuario() : null;
+      if (debe && u && u.rol !== 'comite') {
+        throw Bloqueo('Esta casa tiene cargos: eliminarla borraría lo que debe. Eso lo hace alguien del comité.');
+      }
       estado.unidades = estado.unidades.filter(function (u) { return u.id !== id; });
       estado.cargos = estado.cargos.filter(function (c) { return c.unidadId !== id; });
       estado.pagos = estado.pagos.filter(function (p) { return p.unidadId !== id; });
@@ -871,10 +908,10 @@ CC.Store = (function () {
       if (cambiarConHistorial(t, cambios)) { estado.meta.demo = false; guardar(); }
       return t;
     },
-    cancelarTraspaso: function (id) {
+    cancelarTraspaso: function (id, motivo) {
       var t = buscar(estado.traspasos, id);
       if (!t) return;
-      cambiarConHistorial(t, { cancelado: true });
+      cambiarConHistorial(t, { cancelado: true, motivoCancelacion: motivo || '' });
       estado.meta.demo = false;
       guardar();
     },
@@ -889,10 +926,10 @@ CC.Store = (function () {
       guardar();
       return i;
     },
-    cancelarIngreso: function (id) {
+    cancelarIngreso: function (id, motivo) {
       var i = buscar(estado.ingresos, id);
       if (!i) return;
-      cambiarConHistorial(i, { cancelado: true });
+      cambiarConHistorial(i, { cancelado: true, motivoCancelacion: motivo || '' });
       estado.meta.demo = false;
       guardar();
     },

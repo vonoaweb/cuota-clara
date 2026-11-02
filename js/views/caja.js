@@ -54,13 +54,20 @@ function formularioTraspaso(traspaso) {
       q('tCerrar').onclick = CC.ui.cerrarModal;
       if (q('tPdf')) q('tPdf').onclick = function () { CC.Comprobantes.descargar(CC.Comprobantes.polizaTraspaso(t.id)); };
       if (q('tCancelar')) q('tCancelar').onclick = function () {
-        CC.ui.confirmar('Cancelar traspaso ' + folioT(t), 'El dinero vuelve a contar en la cuenta de origen. El folio queda a la vista.',
-          'Cancelar traspaso', function () { CC.Store.cancelarTraspaso(t.id); CC.ui.toast('Traspaso cancelado'); }, true);
+        CC.ui.pedirTexto('Cancelar traspaso ' + folioT(t), 'El dinero vuelve a contar en la cuenta de origen y el folio queda a la vista ' +
+          'con el motivo. ¿Por qué se cancela?',
+          'Cancelar traspaso', function (motivo) { CC.Store.cancelarTraspaso(t.id, motivo); CC.ui.toast('Traspaso cancelado'); });
       };
       q('tOk').onclick = function () {
         var de = q('tDe').value, a = q('tA').value, monto = Number(q('tMonto').value);
         if (de === a) { CC.ui.toast('Elige dos cuentas distintas', 'crit'); return; }
         if (!(monto > 0)) { CC.ui.toast('Captura un monto mayor a cero', 'crit'); return; }
+        // De la caja chica no sale más efectivo del que hay
+        if (de === 'caja') {
+          var hay = CC.Model.saldoCuenta('caja') + (!nuevo && !t.cancelado && t.de === 'caja' ? Number(t.monto) || 0 : 0) -
+            (!nuevo && !t.cancelado && t.a === 'caja' ? Number(t.monto) || 0 : 0);
+          if (monto > hay + 0.005) { CC.ui.toast('En caja chica solo hay ' + CC.fmt.money2(hay) + '; no puede salir más', 'crit'); return; }
+        }
         var datos = { de: de, a: a, monto: monto, fecha: q('tFecha').value || CC.per.hoyISO(), referencia: q('tRef').value.trim(), nota: q('tNota').value.trim() };
         var res = nuevo ? CC.Store.agregarTraspaso(datos) : CC.Store.editarTraspaso(t.id, datos);
         CC.ui.cerrarModal();
@@ -158,7 +165,7 @@ function formularioSaldos() {
   var esc = CC.ui.esc;
   CC.ui.modal('Saldos iniciales',
     '<p class="field__hint" style="margin-bottom:12px">Lo que había en cada cuenta el día que empezaron a usar el sistema ' +
-    '(el saldo del banco y el efectivo de la caja que traían de CondoVive). A partir de ahí, el sistema suma y resta solo.</p>' +
+    '(el saldo del banco y el efectivo de la caja que traían del sistema anterior). A partir de ahí, el sistema suma y resta solo.</p>' +
     '<div class="formgrid">' + CC.Store.cuentas().map(function (c) {
       return '<label class="field"><span class="field__lab">' + esc(c.nombre) + '</span>' +
         '<input class="input num" type="number" step="0.01" data-cuenta="' + esc(c.id) + '" value="' + esc(c.saldoInicial || 0) + '"></label>';
@@ -346,7 +353,8 @@ CC.vistas.caja = {
     var filas = e.filas.map(function (m) {
       var accion = m.tipo === 'traspaso' ? '<button class="btn btn--sm btn--ghost" data-tras="' + esc(m.id) + '">Editar</button>'
         : m.tipo === 'egreso' ? '<button class="btn btn--sm btn--ghost" data-egreso="' + esc(m.id) + '">Corregir</button>'
-          : m.tipo === 'ingreso' ? '<button class="btn btn--sm btn--ghost" data-ing="' + esc(m.id) + '">Recibo</button>'
+          : m.tipo === 'ingreso' ? '<button class="btn btn--sm btn--ghost" data-ing="' + esc(m.id) + '">Recibo</button>' +
+              '<button class="btn btn--sm btn--ghost" data-cancelaring="' + esc(m.id) + '" title="Cancelar este ingreso">' + CC.ui.icono('cerrar', 'i--sm') + '</button>'
             : '<button class="btn btn--sm btn--ghost" data-pago="' + esc(m.id) + '">Recibo</button>';
       return '<tr' + (m.tipo === 'traspaso' ? ' class="row--traspaso"' : '') + '>' +
         '<td class="mono" style="font-size:12px;white-space:nowrap">' + esc(CC.fmt.fechaCorta(m.fecha)) + '</td>' +
@@ -401,6 +409,16 @@ CC.vistas.caja = {
     });
     raiz.querySelectorAll('[data-egreso]').forEach(function (b) {
       b.onclick = function () { CC.vistas.gastos.editar(b.getAttribute('data-egreso')); };
+    });
+    raiz.querySelectorAll('[data-cancelaring]').forEach(function (b) {
+      b.onclick = function () {
+        var ing = CC.Store.ingreso(b.getAttribute('data-cancelaring'));
+        if (!ing) return;
+        var fol = CC.Comprobantes.folio('I-', ing.folio);
+        CC.ui.pedirTexto('Cancelar el ingreso ' + fol, 'Deja de contar en ' + (ing.cuenta === 'caja' ? 'la caja chica' : 'el banco') +
+          ', pero el folio ' + fol + ' se queda a la vista con el motivo. ¿Por qué se cancela?',
+          'Cancelar ingreso', function (motivo) { CC.Store.cancelarIngreso(ing.id, motivo); CC.ui.toast('Ingreso ' + fol + ' cancelado'); });
+      };
     });
     raiz.querySelectorAll('[data-ing]').forEach(function (b) {
       b.onclick = function () { CC.Comprobantes.descargar(CC.Comprobantes.reciboIngreso(b.getAttribute('data-ing'))); };

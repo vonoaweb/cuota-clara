@@ -797,11 +797,11 @@ CC.Model = (function () {
    * Fecha en que quedó pagado cada cargo de una casa (los pagos cubren lo más
    * viejo primero). Lo que sigue pendiente no aparece.
    */
-  function coberturas(unidadId, cargosLista) {
+  function coberturas(unidadId, cargosLista, pagosLista) {
     var cargos = (cargosLista || indice().cargos[unidadId] || []).slice().sort(ordenCargos);
     var restos = cargos.map(function (c) { return Number(c.monto) || 0; });
     var res = {}, k = 0;
-    (indice().pagos[unidadId] || []).forEach(function (p) {
+    (pagosLista || indice().pagos[unidadId] || []).forEach(function (p) {
       var bolsa = Number(p.monto) || 0;
       while (k < cargos.length) {
         if (restos[k] <= 0.005) { res[cargos[k].id] = p.fecha; k++; continue; }
@@ -812,6 +812,33 @@ CC.Model = (function () {
       }
     });
     return res;
+  }
+
+  /** Cuándo se creó un registro, por su id (lleva la hora en base 36), o 0 si no se sabe. */
+  function creadoEn(id) {
+    var m = /_([0-9a-z]{8})[0-9a-z]{5}$/.exec(String(id || ''));
+    return m ? parseInt(m[1], 36) : 0;
+  }
+
+  /**
+   * Un convenio que se está cumpliendo parte la cuenta de la casa en dos: lo que
+   * ya se debía al firmarlo se paga con las parcialidades (y mientras se cumpla
+   * ya no le crecen recargos), y las cuotas nuevas con los demás pagos. Si no, el
+   * pago de la cuota del mes se iría a lo viejo y la cuota quedaría "pagada
+   * tarde", con recargo, y el convenio dice que no.
+   * Regresa qué cargos son de antes y los pagos que van a lo nuevo.
+   */
+  function partirPorConvenio(cv, lista, pagos) {
+    var perCv = CC.per.de(cv.fecha), tCv = Date.parse(cv.registrado) || 0;
+    var deAntes = {};
+    lista.forEach(function (c) { if (c.periodo <= perCv && !(tCv && creadoEn(c.id) > tCv)) deAntes[c.id] = 1; });
+    var registradoAntes = function (p) {
+      return tCv && p.registrado ? Date.parse(p.registrado) < tCv : p.fecha < cv.fecha;
+    };
+    return {
+      deAntes: deAntes,
+      pagosNuevos: (pagos || []).filter(function (p) { return p.convenioId !== cv.id && !registradoAntes(p); })
+    };
   }
 
   /**
@@ -830,13 +857,19 @@ CC.Model = (function () {
       var lista = (ix.cargos[u.id] || []).slice();
       var deCuota = {};
       lista.forEach(function (c) { if (c.tipo === 'recargo' && c.de) deCuota[c.de] = c; });
+      var cv = convenioDe(u.id);
+      var parte = cv && cv.estado === 'al dia' ? partirPorConvenio(cv.convenio, lista, ix.pagos[u.id]) : null;
       lista.filter(function (c) { return c.tipo === 'cuota' && Number(c.monto) > 0 && c.periodo <= hoyP; })
         .sort(ordenCargos)
         .forEach(function (cu) {
           var ex = deCuota[cu.id];
           if (ex && (ex.condonado || ex.manual)) return;
+          if (parte && parte.deAntes[cu.id]) return;     // es de antes del convenio: mientras se cumpla, no se mueve
           // el recargo de un mes mueve la fecha en que se cubren los siguientes
-          var monto = recargoPara(cu, coberturas(u.id, lista)[cu.id] || null);
+          var cubierta = parte
+            ? coberturas(u.id, lista.filter(function (c) { return !parte.deAntes[c.id]; }), parte.pagosNuevos)[cu.id]
+            : coberturas(u.id, lista)[cu.id];
+          var monto = recargoPara(cu, cubierta || null);
           if (ex) {
             if (Math.abs((Number(ex.monto) || 0) - monto) > 0.005) {
               actualizar.push({ id: ex.id, monto: monto });

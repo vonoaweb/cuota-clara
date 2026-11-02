@@ -32,7 +32,7 @@ CC.vistas.reportes = {
     var cierre = CC.Store.cierre(p);
     if (cierre) {
       out.push('<div class="note noprint"><div><strong>' + esc(CC.fmt.periodo(p)) + ' está cerrado</strong>' +
-        (cierre.por ? ' por ' + esc(cierre.por.nombre) : '') + ' el ' + esc(CC.fmt.fechaCorta(String(cierre.fecha).slice(0, 10))) +
+        (cierre.por ? ' por ' + esc(cierre.por.nombre) : '') + ' el ' + esc(CC.fmt.fechaCorta(cierre.fecha)) +
         '. Lo de este mes ya no se cambia.' + (cierre.nota ? ' Nota: ' + esc(cierre.nota) : '') + '</div></div>');
     } else if (p < CC.per.hoy()) {
       var rv = CC.Cierre.revision(p);

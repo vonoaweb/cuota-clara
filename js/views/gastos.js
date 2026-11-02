@@ -193,6 +193,7 @@ function formularioEgreso(gasto, opciones) {
         if (!(monto > 0)) { CC.ui.toast('Captura un monto mayor a cero', 'crit'); return; }
         if (nuevo && !autorizo) { CC.ui.toast('Falta quién autorizó el egreso', 'crit'); q('eAut').focus(); return; }
         if (recibo && !q('eProv').value.trim()) { CC.ui.toast('Para el recibo hace falta el nombre de quien recibe', 'crit'); return; }
+        if (recibo && firma.vacia() && !(g.firmaId || g.firmaInline)) { CC.ui.toast('Falta la firma de quien recibe el dinero', 'crit'); return; }
         if (cuenta === 'caja' && estadoE === 'pagado') {
           var disponible = CC.Model.saldoCuenta('caja') + (!nuevo && g.cuenta === 'caja' && g.estado === 'pagado' ? Number(g.monto) : 0);
           if (monto > disponible + 0.005) {
@@ -220,6 +221,10 @@ function formularioEgreso(gasto, opciones) {
           var res = nuevo ? CC.Store.agregarGasto(datos) : CC.Store.editarGasto(g.id, datos);
           CC.ui.cerrarModal();
           CC.ui.toast((nuevo ? 'Egreso ' : 'Cambios guardados en ') + folioEgreso(res) + (nuevo ? ' registrado' : ''), 'good');
+          // que nunca se pierda una foto sin avisar (la firma, si no se pudo aparte, va dentro del egreso)
+          if (fotoDataURL && !ids[1]) {
+            CC.ui.toast('El egreso ' + folioEgreso(res) + ' se guardó, pero la foto del comprobante no. Ábrelo y vuelve a ponerla.', 'crit');
+          }
           // el recibo se baja al crearlo o al volver a firmarlo, no en cada corrección
           if (recibo && (nuevo || firmaPNG)) CC.Comprobantes.descargar(CC.Comprobantes.reciboEgreso(res.id), true);
         });
@@ -361,7 +366,7 @@ CC.vistas.gastos = {
               '<td class="c">' + (cancel ? '<span class="pill pill--mute" title="' + esc(g.motivoCancelacion || '') + '">Cancelado</span>'
                 : pend ? '<span class="pill pill--warn">Por pagar</span>' : '<span class="pill pill--good">Pagado</span>') + '</td>' +
               '<td class="c">' + (g.revision
-                ? '<span class="pill pill--good" title="' + esc(g.revision.nombre + ' · ' + CC.fmt.fechaCorta(String(g.revision.fecha).slice(0, 10))) + '">Revisado</span>'
+                ? '<span class="pill pill--good" title="' + esc(g.revision.nombre + ' · ' + CC.fmt.fechaCorta(g.revision.fecha)) + '">Revisado</span>'
                 : cancel ? '' : '<span class="pill pill--mute">Sin revisar</span>') + '</td>' +
               '<td class="r noprint" style="white-space:nowrap">' +
               (pend ? '<button class="btn btn--sm btn--soft" data-pagar="' + esc(g.id) + '">Marcar pagado</button> ' : '') +
@@ -421,7 +426,7 @@ CC.vistas.gastos = {
     // Con usuarios: revisa quien está dentro (del comité) y nunca lo que capturó él mismo
     var yo = CC.Sesion.usuario();
     if (CC.Sesion.hayUsuarios() && !CC.Sesion.puede('comite')) { CC.ui.toast('Los egresos los revisa alguien del comité', 'crit'); return; }
-    var propio = function (g) { return yo && g.registradoPor && g.registradoPor.id === yo.id; };
+    var propio = function (g) { return CC.Store.tocoElGasto(g, yo); };
     CC.ui.modal('Revisar egresos de ' + CC.fmt.periodo(ctx.periodo),
       '<p style="font-size:13.5px;color:var(--ink-2);margin-bottom:12px">Revisa cada egreso con su comprobante y palomea los que estén bien. ' +
       'Queda tu nombre y la fecha en el recibo del egreso; si después alguien corrige uno, vuelve a quedar por revisar.</p>' +
@@ -429,9 +434,9 @@ CC.vistas.gastos = {
       '<th>Folio</th><th>Concepto</th><th>Autorizó</th><th class="c">Comprobante</th><th class="r">Monto</th></tr></thead><tbody>' +
       lista.map(function (g) {
         if (propio(g)) {
-          return '<tr class="row--cancelado" title="Lo capturaste tú: lo revisa otra persona"><td class="c">—</td>' +
+          return '<tr class="row--cancelado" title="Lo capturaste o corregiste tú: lo revisa otra persona"><td class="c">—</td>' +
             '<td class="mono" style="font-size:12px">' + esc(folioEgreso(g)) + '</td><td colspan="3">' + esc(g.concepto) +
-            ' · <span class="muted">lo capturaste tú; lo revisa otra persona</span></td><td class="r">' + esc(CC.fmt.money2(g.monto)) + '</td></tr>';
+            ' · <span class="muted">lo capturaste o corregiste tú; lo revisa otra persona</span></td><td class="r">' + esc(CC.fmt.money2(g.monto)) + '</td></tr>';
         }
         return '<tr><td class="c"><input type="checkbox" data-rv="' + esc(g.id) + '" checked></td>' +
           '<td class="mono" style="font-size:12px">' + esc(folioEgreso(g)) + '</td>' +
@@ -478,7 +483,7 @@ CC.vistas.gastos = {
         return [folioEgreso(g), g.fecha, g.concepto, g.categoria, g.proveedor || '', nombreCuenta(g.cuenta),
           g.metodo || '', g.referencia || g.folio || '', Number(g.monto) || 0,
           g.estado === 'cancelado' ? 'Cancelado' : g.estado === 'pendiente' ? 'Por pagar' : 'Pagado',
-          g.autorizo || '', g.revision ? g.revision.nombre + ' (' + String(g.revision.fecha).slice(0, 10) + ')' : '',
+          g.autorizo || '', g.revision ? g.revision.nombre + ' (' + CC.fmt.local(g.revision.fecha).slice(0, 10) + ')' : '',
           g.fotoId ? 'Sí' : 'No', g.nota || ''];
       });
     CC.ui.descargarCSV('Egresos ' + CC.fmt.periodo(ctx.periodo),

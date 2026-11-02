@@ -50,6 +50,7 @@ CC.vistas.ajustes = {
     var cats = CC.Store.categorias();
     var totalPresupuesto = cats.reduce(function (a, x) { return a + (Number(x.presupuesto) || 0); }, 0);
     var cuotaTotal = CC.Model.cuotaTotal();
+    var cuotaCasa = Number(c.cuotaCasa) || 0;
 
     var out = [];
 
@@ -82,10 +83,16 @@ CC.vistas.ajustes = {
     out.push(
       '<div class="panelbox">' +
       '<div class="panelbox__head"><h3>Reglas de cobro</h3>' +
-      '<span class="eyebrow">Definen cuotas, vencimientos y recargos</span></div>' +
+      '<a class="btn btn--sm btn--ghost" href="#/inicio">Abrir Primeros pasos</a></div>' +
       '<div class="panelbox__body">' +
       '<div class="formgrid">' +
-      campoNum('cPresupuesto', 'Presupuesto mensual', c.presupuestoMensual, 'Se reparte entre las casas por indiviso') +
+      // Cuota igual para todas (la de Primeros pasos): no hay presupuesto que repartir
+      (cuotaCasa
+        ? '<div class="field"><span class="field__lab">Cuota de cada casa</span>' +
+          '<div style="font-size:16px;font-weight:600;padding:6px 0">' + esc(CC.fmt.money2(cuotaCasa)) + ' al mes</div>' +
+          '<span class="field__hint">Se cambia en <a href="#/inicio">Primeros pasos → Cuota y recargos</a>; la de una sola casa, en Casas → la casa → Editar</span>' +
+          '<input type="hidden" id="cPresupuesto" value="' + esc(c.presupuestoMensual || 0) + '"></div>'
+        : campoNum('cPresupuesto', 'Presupuesto mensual', c.presupuestoMensual, 'Se reparte entre las casas por indiviso')) +
       campoNum('cDia', 'Día de vencimiento', c.diaVencimiento, 'Día del mes en que vence la cuota') +
       campoNum('cFondo', 'Fondo de reserva (%)', c.fondoReservaPct, 'Parte de lo cobrado que se aparta') +
       campoNum('cAvisoDias', 'Avisar a los … días', c.avisoDiasTras, 'Días después del vencimiento para el primer aviso') +
@@ -116,8 +123,10 @@ CC.vistas.ajustes = {
       '<input type="checkbox" id="cVisitas"' + (c.registroVisitas ? ' checked' : '') + '> ' +
       'Llevar el registro de visitas de la caseta</label>' +
       '<div class="note" style="margin-top:16px"><div>' +
-      'Con un presupuesto de <strong>' + esc(CC.fmt.money(c.presupuestoMensual)) + '</strong> repartido entre ' +
-      CC.Store.unidades().length + ' casas, las cuotas suman <strong>' + esc(CC.fmt.money(cuotaTotal)) + '</strong> al mes. ' +
+      (cuotaCasa
+        ? 'Las cuotas de las ' + CC.Store.unidades().length + ' casas suman <strong>' + esc(CC.fmt.money(cuotaTotal)) + '</strong> al mes. '
+        : 'Con un presupuesto de <strong>' + esc(CC.fmt.money(c.presupuestoMensual)) + '</strong> repartido entre ' +
+          CC.Store.unidades().length + ' casas, las cuotas suman <strong>' + esc(CC.fmt.money(cuotaTotal)) + '</strong> al mes. ') +
       (totalPresupuesto > 0
         ? 'El presupuesto de egresos es de <strong>' + esc(CC.fmt.money(totalPresupuesto)) + '</strong>, lo que deja ' +
           '<strong>' + esc(CC.fmt.money(cuotaTotal - totalPresupuesto)) + '</strong> de margen mensual.'
@@ -198,7 +207,8 @@ CC.vistas.ajustes = {
       (CC.Escritorio
         ? '<p style="font-size:12.5px;color:var(--ink-2);max-width:66ch">La base de datos es un archivo en <strong>Documentos\\Cuota Clara</strong> ' +
           'de esta computadora y se guarda sola con cada cambio. Cada día queda una copia en la carpeta <strong>Respaldos</strong> ' +
-          '(se guardan 90 días). Para tener otra copia fuera de la computadora, copia esa carpeta a una memoria USB.</p>' +
+          '(se guardan 90 días) y las fotos y firmas quedan en <strong>Imagenes</strong>. Para tener otra copia fuera de la computadora, ' +
+          'copia la carpeta completa a una memoria USB: así va todo. «Guardar base de datos» guarda solo los datos, sin fotos.</p>' +
           '<div class="formrow" style="gap:9px"><button class="btn btn--soft" id="bCarpeta">Abrir la carpeta de datos</button>' +
           '<button class="btn btn--ghost" id="bBuscarAct">Buscar actualizaciones</button>' +
           '<span class="field__hint" style="align-self:center">Versión ' + esc(CC.Escritorio.version) + '</span></div>'
@@ -246,7 +256,7 @@ CC.vistas.ajustes = {
             var esYo = yo && yo.id === u.id;
             return '<tr' + (u.activo ? '' : ' class="row--cancelado"') + '><td class="strong">' + esc(u.nombre) + (esYo ? ' <span class="pill pill--flat">tú</span>' : '') + '</td>' +
               '<td>' + esc(CC.Sesion.nombreRol(u.rol)) + '</td>' +
-              '<td class="mono" style="font-size:12px">' + esc(CC.fmt.fechaCorta(String(u.creado || '').slice(0, 10))) + '</td>' +
+              '<td class="mono" style="font-size:12px">' + esc(CC.fmt.fechaCorta(u.creado || '')) + '</td>' +
               '<td class="c">' + (u.activo ? '<span class="pill pill--good">Activo</span>' : '<span class="pill pill--mute">De baja</span>') + '</td>' +
               '<td class="r noprint" style="white-space:nowrap">' + (u.activo && (esYo || CC.Sesion.puede('comite'))
                 ? '<button class="btn btn--sm btn--ghost" data-clave="' + esc(u.id) + '">' + (esYo ? 'Cambiar mi contraseña' : 'Poner contraseña nueva') + '</button> ' +

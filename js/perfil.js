@@ -1,14 +1,13 @@
 /* perfil.js — el demo para enseñar (27-oct-2026).
  *
- * Fernando: "haz otro pero exclusivo para demos para que no haya problemas". Es el
- * que se le puede enseñar a cualquiera: el condominio, los vecinos, los importes y
+ * Es el que se le puede enseñar a cualquiera: el condominio, los vecinos, los importes y
  * la cuenta bancaria son inventados, no hay ningún teléfono real y los WhatsApp que
  * se manden desde aquí le llegan a quien lo está probando (demoPublico, js/demo.js).
  * Los correos de los vecinos son de example.com, un dominio que no es de nadie.
  *
  * Trae todo lo que sabe hacer el sistema: recargos por tramos, banco y caja chica,
  * egresos con recibo firmado, reservas de áreas, registro de visitas y pago anual
- * adelantado. Los demos de Mallorca y Villas Cádiz siguen aparte, para esos clientes.
+ * adelantado. Los demos de cada cliente van aparte.
  */
 window.CC = window.CC || {};
 CC.Perfil = {
